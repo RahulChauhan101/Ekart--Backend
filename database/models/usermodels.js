@@ -11,14 +11,12 @@ const userSchema = new mongoose.Schema({
     },
     profilepic: {
         type: String,
-        required: false,
         default: "",
-    }, // cloudinary  image url
+    },
     profilepicpublicId: {
         type: String,
-        required: false,
         default: "",
-    }, // cloudinary image public id for deletion
+    },
     email: {
         type: String,
         required: true,
@@ -31,14 +29,14 @@ const userSchema = new mongoose.Schema({
     role: {
         type: String,
         enum: ["user", "admin"],
-        default: "user"
+        default: "user",
     },
     token: {
         type: String,
-        default: null
+        default: null,
     },
     isverified: {
-        type: String,
+        type: Boolean,
         default: false,
     },
     isloggedIn: {
@@ -47,31 +45,18 @@ const userSchema = new mongoose.Schema({
     },
     otp: {
         type: String,
-        default: null
+        default: null,
     },
     otpexpiry: {
         type: Date,
-        default: null
+        default: null,
     },
-    address: {
-        type: String,
-    },
-    city: {
-        type: String,
-    },
-    state: {
-        type: String,
-    },
-    country: {
-        type: String,
-    },
-    zipcode: {
-        type: String,
-    },
-    phonNomber: {
-        type: String,
-    }
-}, { timestamps: true });         
-
+    address: String,
+    city: String,
+    state: String,
+    country: String,
+    zipcode: String,
+    phoneNumber: String,
+}, { timestamps: true });
 
 export const User = mongoose.model("User", userSchema);
