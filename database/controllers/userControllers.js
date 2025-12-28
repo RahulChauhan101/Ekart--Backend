@@ -7,6 +7,7 @@ import { sendOTPEmail } from "../controllers/Utils/sendOtpEmail.js";
 import { User } from "../models/usermodels.js";
 import { verifyEmail } from "../../emailVeryfiy/veryfiyEmail.js";
 import { Session } from "../models/sessionModels.js";
+import { promises } from "dns";
 
 export const register = async (req, res) => {
     try {
@@ -136,11 +137,11 @@ export const reVerify = async (req, res) => {
                 message: "Email already verified",
             });
         }
-   const token = jwt.sign(
-  { id: user._id },
-  process.env.JWT_SECRET, // ✅ SAME SECRET
-  { expiresIn: "10m" }
-);
+        const token = jwt.sign(
+            { id: user._id },
+            process.env.JWT_SECRET, // ✅ SAME SECRET
+            { expiresIn: "10m" }
+        );
 
         await verifyEmail(email, token);
         user.token = token;
@@ -201,17 +202,25 @@ export const login = async (req, res) => {
             { expiresIn: "7d" }
         );
 
+        const refreshToken = jwt.sign(
+            { id: user._id },
+            process.env.REFRESH_JWT_SECRET,
+            { expiresIn: "30d" }
+        );
+
+        user.refreshToken = refreshToken;
         user.token = token;
         user.isloggedIn = true;
         await user.save();
 
-             // 🧾 Create session
+        // 🧾 Create session
         await Session.create({
             userId: user._id,
             token,
+            refreshToken,
             ip: req.ip,
             userAgent: req.headers["user-agent"],
-        });   
+        });
 
         return res.json({
             success: true,
@@ -234,37 +243,48 @@ export const login = async (req, res) => {
     }
 };
 
-
 export const logout = async (req, res) => {
-  const user = await User.findById(req.id);
+    try {
+        // Prefer user injected by middleware; fallback to id lookup
+        const user = req.user || (req.id ? await User.findById(req.id) : null);
 
-  user.isloggedIn = false;
-  user.token = null;
-  await user.save();
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "Not authenticated",
+            });
+        }
 
-  res.json({
-    success: true,
-    message: "Logout successful",
-  });
+        // Invalidate user session flags
+        user.isloggedIn = false;
+        user.token = null;
+        await user.save();
+
+        // Revoke session(s) from Session store
+        const authHeader = req.headers.authorization || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        try {
+            if (token) {
+                await Session.deleteOne({ userId: user._id, token });
+            } else {
+                await Session.deleteMany({ userId: user._id });
+            }
+        } catch (_) {
+            // Ignore session cleanup errors, logout should still succeed
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Logout successful",
+        });
+    } catch (error) {
+        console.error("Logout Error:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+        });
+    }
 };
-
-
-
-// export const Authlogout = async (req, res) => {
-//     const user = await User.findById(req.id);
-//     user.isloggedIn = false;
-//     user.token = null;
-//     await user.save();
-
-//     res.status(200).json({
-//         success: true,
-//         message: "Logout successful",
-//     });
-// };
-
-
-
-
 
 export const forgotPassword = async (req, res) => {
     try {
@@ -310,30 +330,35 @@ export const forgotPassword = async (req, res) => {
     }
 };
 
-export const resetPassword = async (req, res) => {
+export const verifyOTP = async (req, res) => {
     try {
-        const { email, otp, newPassword } = req.body;
-
-        if (!email || !otp || !newPassword) {
+        const { email, otp } = req.body;
+        if (!email || !otp) {
             return res.status(400).json({
                 success: false,
-                message: "All fields are required",
+                message: "Email and OTP are required",
             });
         }
-
-        const user = await User.findOne({ email });
-
-        if (!user || !user.otp || !user.otpexpiry) {
+        const user = await User.findOne({
+            email,
+        });
+        if (!user.otp || !user.otpexpiry) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid request",
+                message: "otp is not generated or all ready used",
+            });
+        }
+        if (user.otpexpiry < Date.now()) {
+            return res.status(400).json({
+                success: false,
+                message: "OTP has expired please generate new OTP",
             });
         }
 
         if (user.otp !== otp) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid OTP",
+                message: " OTP is Invalid ",
             });
         }
 
@@ -344,21 +369,50 @@ export const resetPassword = async (req, res) => {
             });
         }
 
-        // 🔐 Hash new password
-        user.password = await bcrypt.hash(newPassword, 10);
         user.otp = null;
         user.otpexpiry = null;
-        user.token = null;
-
         await user.save();
 
         return res.json({
             success: true,
-            message: "Password reset successful",
+            message: "OTP verified successfully",
         });
-
     } catch (error) {
-        console.error("Reset Password Error:", error);
+        console.error("Verify OTP Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: `Server Error: ${error.message}`,
+        });
+    }
+};
+
+
+export const changePassword = async (req, res) => {
+    try {
+        const { newPassword, confirmPassword } = req.body;
+        const { email } = req.params;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "New password and confirm password do not match",
+            });
+        }
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+        return res.status(200).json({
+            success: true,
+            message: "Password changed successfully",
+        });
+    } catch (error) {
+        console.error("Change Password Error:", error);
         return res.status(500).json({
             success: false,
             message: "Server Error",
@@ -368,4 +422,50 @@ export const resetPassword = async (req, res) => {
 
 
 
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, newPassword, confirmPassword } = req.body;
 
+    if (!email || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, new password and confirm password are required",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match",
+      });
+    }
+
+    // 🔐 Hash new password
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.token = null;        // optional: invalidate sessions
+    user.isloggedIn = false;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully",
+    });
+
+  } catch (error) {
+    console.error("Reset Password Error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};

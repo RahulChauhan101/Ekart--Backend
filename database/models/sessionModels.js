@@ -11,6 +11,11 @@ const sessionSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    refreshToken: {
+        type: String,
+        required: true,
+    },
+
     ip: String,
     userAgent: String,
     isActive: {
