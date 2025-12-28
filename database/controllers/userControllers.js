@@ -75,6 +75,7 @@ export const verify = async (req, res) => {
 
         const token = authHeader.split(" ")[1];
 
+        console.log("VERIFY ENDPOINT - JWT_SECRET 👉", process.env.JWT_SECRET);
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         const user = await User.findById(decoded.id);
@@ -135,11 +136,12 @@ export const reVerify = async (req, res) => {
                 message: "Email already verified",
             });
         }
-        const token = jwt.sign(
-            { id: user._id },
-            process.env.SECRET_KEY,
-            { expiresIn: "10m" }
-        );
+   const token = jwt.sign(
+  { id: user._id },
+  process.env.JWT_SECRET, // ✅ SAME SECRET
+  { expiresIn: "10m" }
+);
+
         await verifyEmail(email, token);
         user.token = token;
         await user.save();

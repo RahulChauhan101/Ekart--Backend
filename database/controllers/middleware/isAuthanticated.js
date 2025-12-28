@@ -1,66 +1,25 @@
-// import jwt from "jsonwebtoken";
-// import { User } from "../../../database/models/usermodels.js";
-// export const isAuthenticated = async (req, res, next) => {
-//     try {
-//         const authHeader = req.headers.authorization;
-
-//         if (!authHeader || !authHeader.startsWith("Bearer ")) {
-//             return res.status(401).json({
-//                 success: false,
-//                 message: "Access token missing",
-//             });
-//         }
-
-//         const token = authHeader.split(" ")[1];
-
-//         let decoded;
-//         try {
-//             // decoded = jwt.verify(token, process.env.JWT_SECRET);
-// decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-//         } catch (err) {
-//             return res.status(401).json({
-//                 success: false,
-//                 message:
-//                     err.name === "TokenExpiredError"
-//                         ? "Access token expired"
-//                         : "Invalid access token",
-                        
-//             });
-//         }
-        
-
-//         const user = await User.findById(decoded.id);
-//         if (!user) {
-//             return res.status(401).json({
-//                 success: false,
-//                 message: "User not found",
-//             });
-//         }
-
-//         // ❌ REMOVE isloggedIn check from middleware
-//         req.id = user._id;
-//         req.user = user;
-//         next();
-
-//     } catch (error) {
-//         return res.status(401).json({
-//             success: false,
-//             message: "Unauthorized",
-//         });
-//     }
-// };
-
 import jwt from "jsonwebtoken";
 import { User } from "../../../database/models/usermodels.js";
 
 export const isAuthenticated = async (req, res, next) => {
   try {
-    // 🔹 Token from HEADER or BODY
-    const token =
-      req.headers.authorization?.startsWith("Bearer ")
-        ? req.headers.authorization.split(" ")[1]
-        : req.body.token;
+    const authHeader = req.headers.authorization || "";
+
+    // 🔍 DEBUG LOG
+    console.log("RAW AUTH HEADER 👉", authHeader);
+
+    // 🔐 Extract token properly from "Bearer <token>" format
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Access token missing or invalid format",
+      });
+    }
+
+    const token = authHeader.slice(7); // Remove "Bearer " prefix
+
+    console.log("EXTRACTED TOKEN 👉", token);
+    console.log("JWT_SECRET BEING USED 👉", process.env.JWT_SECRET);
 
     if (!token) {
       return res.status(401).json({
@@ -72,10 +31,11 @@ export const isAuthenticated = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(decoded.id);
-    if (!user) {
+
+    if (!user || !user.isloggedIn) {
       return res.status(401).json({
         success: false,
-        message: "User not found",
+        message: "Session expired, please login again",
       });
     }
 
@@ -84,9 +44,17 @@ export const isAuthenticated = async (req, res, next) => {
     next();
 
   } catch (error) {
+    console.error("AUTH ERROR 👉", error.message);
+    console.error("ERROR DETAILS 👉", {
+      name: error.name,
+      message: error.message,
+      expiredAt: error.expiredAt
+    });
     return res.status(401).json({
       success: false,
-      message: "Invalid access token",
+      message: error.name === "TokenExpiredError" 
+        ? "Token has expired. Please login again." 
+        : "Invalid or expired access token",
     });
   }
 };
