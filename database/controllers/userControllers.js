@@ -8,6 +8,7 @@ import { User } from "../models/usermodels.js";
 import { verifyEmail } from "../../emailVeryfiy/veryfiyEmail.js";
 import { Session } from "../models/sessionModels.js";
 import { promises } from "dns";
+import { access } from "fs";
 
 export const register = async (req, res) => {
     try {
@@ -112,55 +113,6 @@ export const verify = async (req, res) => {
     }
 };
 
-
-export const reVerify = async (req, res) => {
-    try {
-        const { email } = req.body;
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: "Email is required",
-            });
-        }
-
-        const user =
-            await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-        }
-        if (user.isverified === true) {
-            return res.status(200).json({
-                success: true,
-                message: "Email already verified",
-            });
-        }
-        const token = jwt.sign(
-            { id: user._id },
-            process.env.JWT_SECRET, // ✅ SAME SECRET
-            { expiresIn: "10m" }
-        );
-
-        await verifyEmail(email, token);
-        user.token = token;
-        await user.save();
-        return res.status(200).json({
-            success: true,
-            message: "Verification email resent successfully",
-            token: user.token
-        });
-    }
-    catch (error) {
-        console.error("Re-Verify Error:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-        });
-    }
-};
-
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -225,7 +177,8 @@ export const login = async (req, res) => {
         return res.json({
             success: true,
             message: "Login successful",
-            token,
+            accessToken: token,
+            refreshToken: refreshToken,
             user: {
                 id: user._id,
                 FirstName: user.FirstName,
@@ -332,8 +285,9 @@ export const forgotPassword = async (req, res) => {
 
 export const verifyOTP = async (req, res) => {
     try {
-        const { email, otp } = req.body;
-        if (!email || !otp) {
+        const { otp } = req.body;
+        const { email } = req.params;
+        if ( !otp) {
             return res.status(400).json({
                 success: false,
                 message: "Email and OTP are required",
@@ -386,7 +340,6 @@ export const verifyOTP = async (req, res) => {
     }
 };
 
-
 export const changePassword = async (req, res) => {
     try {
         const { newPassword, confirmPassword } = req.body;
@@ -420,52 +373,45 @@ export const changePassword = async (req, res) => {
     }
 };
 
+ export const allUsers = async (req, res) => {
+    try {
+        const users = await User.find();
+        return res.status(200).json({
+            success: true,
+            users,
+        });
 
-
-export const resetPassword = async (req, res) => {
-  try {
-    const { email, newPassword, confirmPassword } = req.body;
-
-    if (!email || !newPassword || !confirmPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "Email, new password and confirm password are required",
-      });
+    } catch (error) {
+        console.error("All Users Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: `Server Error: ${error.message}`,
+        });
     }
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "New password and confirm password do not match",
-      });
-    }
-
-    // 🔐 Hash new password
-    user.password = await bcrypt.hash(newPassword, 10);
-    user.token = null;        // optional: invalidate sessions
-    user.isloggedIn = false;
-
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Password reset successfully",
-    });
-
-  } catch (error) {
-    console.error("Reset Password Error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
-  }
 };
+
+export  const getUserbyId= async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const user = await User.findById(userId).select("-password -otp -otpexpiry -refreshToken -token");
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            user,
+        });
+    } catch (error) {
+        console.error("Get User by ID Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: `Server Error: ${error.message}`,
+        });
+    }
+};
+
+
+
