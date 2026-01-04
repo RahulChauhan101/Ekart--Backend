@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { sendOTPEmail } from "../controllers/Utils/sendOtpEmail.js";
-
+import cloudinary from "../../config/cloudinary.js";
 import { User } from "../models/usermodels.js";
 import { verifyEmail } from "../../emailVeryfiy/veryfiyEmail.js";
 import { Session } from "../models/sessionModels.js";
@@ -412,6 +412,94 @@ export  const getUserbyId= async (req, res) => {
         });
     }
 };
+
+
+/* =========================
+   GET PROFILE
+========================= */
+export const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.id).select(
+      "-password -token -otp -otpexpiry -__v"
+    );
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile",
+    });
+  }
+};
+
+/* =========================
+   UPDATE PROFILE
+========================= */
+export const updateProfile = async (req, res) => {
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.id,
+      {
+        phoneNumber: req.body.phoneNumber,
+        address: req.body.address,
+        city: req.body.city,
+        country: req.body.country,
+      },
+      { new: true, runValidators: true }
+    ).select("-password -token -otp -otpexpiry -__v")
+
+
+    res.status(200).json({
+      success: true,
+      user: updatedUser,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Profile update failed",
+    });
+  }
+};
+
+
+export const updateProfilePic = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
+    }
+
+    const user = await User.findById(req.id);
+
+    // delete old image
+    if (user.profilepicpublicId) {
+      await cloudinary.uploader.destroy(user.profilepicpublicId);
+    }
+
+    user.profilepic = req.file.path;       // ✅ IMAGE URL
+    user.profilepicpublicId = req.file.filename; // ✅ PUBLIC ID
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("UPLOAD ERROR 👉", error);
+    res.status(500).json({
+      success: false,
+      message: "Profile picture update failed",
+    });
+  }
+};
+
+
 
 
 
