@@ -56,7 +56,7 @@ const userSchema = new mongoose.Schema({
     state: String,
     country: String,
     zipcode: String,
-    phoneNumber: Number,
+    phoneNumber: String,
 }, { timestamps: true });
 
 export const User = mongoose.model("User", userSchema);
