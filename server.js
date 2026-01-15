@@ -7,6 +7,7 @@ import { initCloudinary } from "./database/controllers/Utils/cloudinary.js";
 
 import connectDB from "./database/db.js";
 import userRoutes from "./database/controllers/routes/userRoutes.js";
+import productRoutes from "./database/controllers/routes/productRoutes.js";
 
 // __dirname setup (ESM)
 const __filename = fileURLToPath(import.meta.url);
@@ -33,6 +34,7 @@ app.use(
 );
 app.use(express.json());
 app.use("/api/users", userRoutes);
+app.use("/api/products", productRoutes);
 
 // 🔥 FINAL START FUNCTION
 const startServer = async () => {
